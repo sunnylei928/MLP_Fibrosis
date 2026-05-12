@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+# 标准的多层感知机，包含全连接层、批归一化和 ReLU 激活函数
 class MLPClassifier(nn.Module):
     def __init__(self, input_dim, hidden_dims, num_classes, dropout=0.3):
         super().__init__()
@@ -18,7 +19,7 @@ class MLPClassifier(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
+# 它与 MLP 共享特征提取主干，但在输出端使用单个共享的线性层（输出 1 维）以及 K-1 个可学习的偏置参数，专门用于捕捉纤维化等级的有序递进关系。
 class CORALNet(nn.Module):
     """
     CORALNet ordinal-regression head.

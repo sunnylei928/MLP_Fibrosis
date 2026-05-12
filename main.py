@@ -21,11 +21,19 @@ def main():
     print(f"Class weights: {class_weights.cpu().numpy()}")
 
     # Loss functions to compare
+    # 交叉熵 (ce)
+    # 加权交叉熵 (weighted_ce)：结合了类别权重 (class_weights) 以缓解类别不平衡
+    # Focal Loss (focal)
+    # 标签平滑 (label_smoothing)
+    # 类别距离加权交叉熵 (cdw_ce)：惩罚跨越多个等级的预测错误，权重参数 alpha=1.0
+    # 带间隔的类别距离加权 (cdw_ce_margin)：在上述基础上增加了 margin=0.05
+    # 均方误差 (mse)
+    # CORAL Loss (coral)：搭配 CORALNet 模型使用
     loss_configs = {
         "ce":            ("ce", None),
-        "weighted_ce":   ("weighted_ce", class_weights),
-        "focal":         ("focal", class_weights),
-        "label_smoothing": ("label_smoothing", None),
+        # "weighted_ce":   ("weighted_ce", class_weights),
+        # "focal":         ("focal", class_weights),
+        # "label_smoothing": ("label_smoothing", None),
         "cdw_ce":        ("cdw_ce", None),
         "cdw_ce_margin": ("cdw_ce_margin", None),
         "mse":           ("mse", None),
@@ -71,11 +79,12 @@ def main():
     print(f"\n{'='*60}")
     print("  Final Comparison (Test Set)")
     print(f"{'='*60}")
-    print(f"{'Loss':<20} {'Acc':>8} {'AdjAcc':>8} {'MacroF1':>8} {'WtdF1':>8}")
-    print("-" * 60)
+    # 扩展了打印宽度并加入了 QWK 和 MAE
+    print(f"{'Loss':<16} {'Acc':>8} {'AdjAcc':>8} {'MacroF1':>8} {'QWK':>8} {'MAE':>8}")
+    print("-" * 65)
     for name, m in results.items():
-        print(f"{name:<20} {m['accuracy']:>8.4f} {m['adjacent_accuracy']:>8.4f} "
-              f"{m['macro_f1']:>8.4f} {m['weighted_f1']:>8.4f}")
+        print(f"{name:<16} {m['accuracy']:>8.4f} {m['adjacent_accuracy']:>8.4f} "
+            f"{m['macro_f1']:>8.4f} {m['qwk']:>8.4f} {m['mae']:>8.4f}")
     print(f"{'='*60}")
 
     save_results(results, version_dir)

@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from sklearn.metrics import (accuracy_score, classification_report,
-                             confusion_matrix, f1_score)
+                             confusion_matrix, f1_score,
+                             cohen_kappa_score, mean_absolute_error) # 增加这两个
 
 @torch.no_grad()
 def evaluate_epoch(model, loader, criterion, device):
@@ -30,6 +31,9 @@ def evaluate_epoch(model, loader, criterion, device):
     adj_acc = np.mean(np.abs(all_preds - all_labels) <= 1)
     macro_f1 = f1_score(all_labels, all_preds, average='macro')
     weighted_f1 = f1_score(all_labels, all_preds, average='weighted')
+    # 新增计算 QWK 和 MAE
+    qwk = cohen_kappa_score(all_labels, all_preds, weights='quadratic')
+    mae = mean_absolute_error(all_labels, all_preds)
 
     return {
         "loss": total_loss / len(loader.dataset),
@@ -37,6 +41,8 @@ def evaluate_epoch(model, loader, criterion, device):
         "adjacent_accuracy": adj_acc,
         "macro_f1": macro_f1,
         "weighted_f1": weighted_f1,
+        "qwk": qwk,  # 新增返回
+        "mae": mae,  # 新增返回
         "preds": all_preds,
         "labels": all_labels
     }
@@ -50,6 +56,8 @@ def print_report(metrics, label_encoder, title="Test"):
     print(f"  Adjacent Accuracy:   {metrics['adjacent_accuracy']:.4f}")
     print(f"  Macro F1:            {metrics['macro_f1']:.4f}")
     print(f"  Weighted F1:         {metrics['weighted_f1']:.4f}")
+    print(f"  QWK (Kappa):         {metrics['qwk']:.4f}")
+    print(f"  MAE:                 {metrics['mae']:.4f}")
     print(f"{'='*50}")
 
     print("\nConfusion Matrix:")

@@ -112,6 +112,8 @@ def plot_confusion_matrices(results_dict, label_encoder, save_dir):
     plt.savefig(os.path.join(save_dir, "confusion_matrices.png"), dpi=150)
     plt.close()
 
+# 评估指标：测试集上的最终评估会输出四个核心指标：准确率 (Accuracy)、相邻准确率 (Adjacent Accuracy，即允许相差一个等级的容错准确率)
+# 宏 F1 分数 (Macro F1) 和加权 F1 分数 (Weighted F1)。
 def save_results(results_dict, save_dir):
     os.makedirs(save_dir, exist_ok=True)
     with open(os.path.join(save_dir, "results.json"), "w", encoding="utf-8") as f:
@@ -119,7 +121,8 @@ def save_results(results_dict, save_dir):
         serializable = {}
         for k, v in results_dict.items():
             serializable[k] = {m: float(v[m]) if isinstance(v[m], (np.floating, np.integer)) else v[m]
-                               for m in ["accuracy", "adjacent_accuracy", "macro_f1", "weighted_f1"]}
+                               # 这里增加了 "qwk" 和 "mae"
+                               for m in ["accuracy", "adjacent_accuracy", "macro_f1", "weighted_f1", "qwk", "mae"]}
         json.dump(serializable, f, ensure_ascii=False, indent=2)
 
 
@@ -127,19 +130,28 @@ def plot_comparison(results_dict, histories, save_dir):
     os.makedirs(save_dir, exist_ok=True)
 
     # Plot metrics bar chart
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
-    metrics = ["accuracy", "adjacent_accuracy", "macro_f1", "weighted_f1"]
-    titles = ["Accuracy", "Adjacent Accuracy", "Macro F1", "Weighted F1"]
+    # 将原本的 1 行 4 列改为 1 行 6 列，并加宽画布
+    fig, axes = plt.subplots(1, 6, figsize=(24, 4))
+    metrics = ["accuracy", "adjacent_accuracy", "macro_f1", "weighted_f1", "qwk", "mae"]
+    titles = ["Accuracy", "Adjacent Accuracy", "Macro F1", "Weighted F1", "QWK", "MAE"]
 
     for ax, metric, title in zip(axes, metrics, titles):
         names = list(results_dict.keys())
         values = [results_dict[n][metric] for n in names]
         bars = ax.bar(names, values, color='steelblue')
-        ax.set_ylim(0, 1.05)
+        
+        # 特别处理：MAE 是误差，不能把上限锁死在 1.05，其他指标是 0~1 的分数
+        if metric != "mae":
+            ax.set_ylim(0, 1.05)
+        else:
+            ax.set_ylim(bottom=0) # MAE 的顶部自适应
+            
         ax.set_title(title)
-        ax.set_ylabel("Score")
+        ax.set_ylabel("Score" if metric != "mae" else "Error")
         for bar, val in zip(bars, values):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+            # 动态调整 MAE 文字标签的纵向偏移量
+            offset = 0.01 if metric != "mae" else (max(values)*0.02)
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + offset,
                     f"{val:.3f}", ha='center', va='bottom', fontsize=9)
         ax.tick_params(axis='x', rotation=15)
 
