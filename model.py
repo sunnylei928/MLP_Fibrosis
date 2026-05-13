@@ -41,7 +41,10 @@ class CORALNet(nn.Module):
         self.feature = nn.Sequential(*layers)
         self.num_classes = num_classes
         self.shared = nn.Linear(prev_dim, 1)
-        self.biases = nn.Parameter(torch.zeros(num_classes - 1))
+        # 初始化 biases 为递减的值，使得累积概率 P(y>k) 单调递降
+        # 例如: [1.5, 0.5, -0.5, -1.5] -> sigmoid(f(x) + biases) 递降
+        bias_init = torch.linspace(1.5, -1.5, num_classes - 1)
+        self.biases = nn.Parameter(bias_init)
 
     def forward(self, x):
         h = self.feature(x)

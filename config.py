@@ -52,13 +52,13 @@ class Config:
         "AST/ALT", "P-SWE", "2D-SWE", "ARPI（AST/40）", "FIB-4"
     ]
     RANDOM_SEED = 42
-    TEST_SIZE = 0.2
-    VAL_SIZE = 0.1
+    TEST_SIZE = 0.3
+    VAL_SIZE = 0.2
     BATCH_SIZE = 32
     # HIDDEN_DIMS = [256, 128, 64]
-    # HIDDEN_DIMS = [64, 32, 16]
+    HIDDEN_DIMS = [64, 32, 16]
     # HIDDEN_DIMS = [32, 16, 8]
-    HIDDEN_DIMS = [64, 32, 16, 8]
+    # HIDDEN_DIMS = [64, 32, 16, 8]
     DROPOUT = 0.3
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-4
