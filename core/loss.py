@@ -165,6 +165,7 @@ def get_loss(name, class_weights=None, num_classes=5, device='cpu',
         'cdw_ce'        – CDW-CE (alpha controls distance-penalty strength)
         'cdw_ce_margin' – CDW-CE with additive margin
         'coral'         – CORALNet ordinal loss (expects logits [B, K-1])
+        'mlp_coral'     – Same as 'coral', but used with MLP architecture
         'mse'           – MSE on softmax probabilities vs one-hot targets
     """
     if name == 'ce':
@@ -181,7 +182,7 @@ def get_loss(name, class_weights=None, num_classes=5, device='cpu',
         return CDWCELoss(alpha=alpha, margin=0.0)
     elif name == 'cdw_ce_margin':
         return CDWCELoss(alpha=alpha, margin=margin)
-    elif name == 'coral':
+    elif name == 'coral' or name == 'mlp_coral':
         return CORALNetLoss(num_classes=num_classes)
     elif name == 'mse':
         return MSEClassificationLoss()

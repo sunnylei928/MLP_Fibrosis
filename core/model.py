@@ -3,7 +3,12 @@ import torch.nn as nn
 
 # 标准的多层感知机，包含全连接层、批归一化和 ReLU 激活函数
 class MLPClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_classes, dropout=0.3):
+    def __init__(self, input_dim, hidden_dims, num_classes, dropout=0.3, ordinal_head=False):
+        """
+        Args:
+            ordinal_head: If True, output num_classes-1 dimensions for ordinal losses (CORAL)
+                         If False, output num_classes dimensions for standard classification
+        """
         super().__init__()
         layers = []
         prev_dim = input_dim
@@ -13,8 +18,17 @@ class MLPClassifier(nn.Module):
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(dropout))
             prev_dim = h
-        layers.append(nn.Linear(prev_dim, num_classes))
+        # 根据是否使用 ordinal head 决定输出维度
+        output_dim = num_classes - 1 if ordinal_head else num_classes
+        layers.append(nn.Linear(prev_dim, output_dim))
         self.net = nn.Sequential(*layers)
+        self.ordinal_head = ordinal_head
+
+        # CORAL 专用：初始化最后一层偏置为递减值，编码有序先验
+        if ordinal_head:
+            final_layer = self.net[-1]
+            with torch.no_grad():
+                final_layer.bias.data = torch.linspace(1.5, -1.5, num_classes - 1)
 
     def forward(self, x):
         return self.net(x)

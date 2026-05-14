@@ -56,7 +56,8 @@ def run_kfold_cv(config, k=5):
         "cdw_ce": ("cdw_ce", None),
         "cdw_ce_margin": ("cdw_ce_margin", None),
         "mse": ("mse", None),
-        "coral": ("coral", None),
+        "mlp_coral": ("mlp_coral", None),  # MLP + CORAL loss
+        "coral": ("coral", None),          # CORALNet + CORAL loss (原始)
     }
 
     for loss_name, (loss_type, weight) in loss_configs.items():
@@ -102,11 +103,10 @@ def run_kfold_cv(config, k=5):
             class_weights = class_weights / class_weights.sum() * len(class_counts)
             class_weights = class_weights.to(config.DEVICE)
 
-            # 创建模型
-            if loss_type == 'coral':
-                model = CORALNet(input_dim, config.HIDDEN_DIMS, num_classes, config.DROPOUT).to(config.DEVICE)
-            else:
-                model = MLPClassifier(input_dim, config.HIDDEN_DIMS, num_classes, config.DROPOUT).to(config.DEVICE)
+            # 创建模型 - 统一使用 MLP 架构
+            ordinal_head = (loss_type == 'coral')
+            model = MLPClassifier(input_dim, config.HIDDEN_DIMS, num_classes,
+                                  config.DROPOUT, ordinal_head=ordinal_head).to(config.DEVICE)
 
             # 创建 loss
             loss_kwargs = {"num_classes": num_classes, "device": config.DEVICE}

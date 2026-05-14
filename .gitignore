@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data (should not be committed)
+data/*.xlsx
+data/*.csv
+data/*.xls
+
+# Model weights (large files)
+outputs/weights/
+*.pt
+*.pth
+*.ckpt
+
+# Logs
+*.log
+outputs/logs/
+
+# OS
+.DS_Store
+Thumbs.db

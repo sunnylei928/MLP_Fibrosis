@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from config import Config
 from dataset import load_data
-from model import MLPClassifier, CORALNet
+from core.model import MLPClassifier
 from loss import get_loss
 from plot_prediction_probs import plot_all_losses_probs
 
@@ -23,10 +23,10 @@ def load_model_from_checkpoint(model_path, model_type, input_dim, num_classes, d
         num_classes: 类别数
         device: 设备
     """
-    if model_type.lower() == 'coral':
-        model = CORALNet(input_dim, Config.HIDDEN_DIMS, num_classes, Config.DROPOUT).to(device)
-    else:
-        model = MLPClassifier(input_dim, Config.HIDDEN_DIMS, num_classes, Config.DROPOUT).to(device)
+    # 统一使用 MLP 架构，CORAL 时输出 K-1 维
+    ordinal_head = (model_type.lower() == 'coral')
+    model = MLPClassifier(input_dim, Config.HIDDEN_DIMS, num_classes,
+                          Config.DROPOUT, ordinal_head=ordinal_head).to(device)
 
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
