@@ -286,6 +286,7 @@ def compute_hierarchical_summary(all_results, n_repeats, le):
         all_values = {}  # {metric: [all_values]}
         repeat_means = {}  # {metric: [repeat_means]}
 
+        # 初始化字典，收集所有指标
         for metric in ['accuracy', 'adjacent_accuracy', 'macro_f1', 'weighted_f1', 'qwk', 'mae']:
             all_values[metric] = []
             repeat_means[metric] = []
@@ -300,6 +301,10 @@ def compute_hierarchical_summary(all_results, n_repeats, le):
                 # 该 repeat 的均值
                 repeat_means[metric].append(np.mean(fold_values))
 
+        # 为每个指标计算统计量，并汇总到一个字典中
+        summary["overall"][loss_name] = {}
+
+        for metric in ['accuracy', 'adjacent_accuracy', 'macro_f1', 'weighted_f1', 'qwk', 'mae']:
             # 总体统计
             mean_val = np.mean(all_values[metric])
             std_val = np.std(all_values[metric], ddof=1)
@@ -311,13 +316,14 @@ def compute_hierarchical_summary(all_results, n_repeats, le):
             else:
                 ci_low = ci_high = mean_val
 
-            summary["overall"][loss_name] = {
+            # 添加到汇总字典
+            summary["overall"][loss_name].update({
                 f"{metric}_mean": mean_val,
                 f"{metric}_std": std_val,
                 f"{metric}_ci_low": ci_low,
                 f"{metric}_ci_high": ci_high,
                 f"{metric}_n": len(all_values[metric])
-            }
+            })
 
         # 运行内标准差
         within_stds = []
@@ -331,11 +337,12 @@ def compute_hierarchical_summary(all_results, n_repeats, le):
             "fold_avg_std": np.mean(within_stds)
         }
 
-        # 运行间标准差
+        # 运行间标准差 - 为每个指标计算并汇总
+        summary["between_repeat"][loss_name] = {}
         for metric in ['accuracy', 'qwk', 'mae']:
-            summary["between_repeat"][loss_name] = {
+            summary["between_repeat"][loss_name].update({
                 f"{metric}_std": np.std(repeat_means[metric])
-            }
+            })
 
     return summary
 
@@ -354,7 +361,7 @@ def print_final_summary(summary, le):
     """打印最终汇总结果"""
     print(f"\n{'='*100}")
     print(f"  多次五折交叉验证最终结果")
-    n_evals = summary["overall"][list(summary["overall"].keys())[0]]["n_samples"]
+    n_evals = summary["overall"][list(summary["overall"].keys())[0]]["accuracy_n"]
     print(f"  数据: {len(le.classes_)}类 × {n_evals}个评估点")
     print(f"{'='*100}")
 
@@ -439,6 +446,71 @@ def plot_comparison(summary, save_dir):
     plt.close()
 
     print(f"\n对比图已保存: {save_path}")
+
+
+def plot_boxplot(all_results, summary, save_dir):
+    """绘制箱线图，展示各loss函数在不同指标上的分布"""
+    os.makedirs(save_dir, exist_ok=True)
+
+    loss_names = list(summary["overall"].keys())
+    metrics = ['accuracy', 'qwk', 'mae']
+    metric_labels = ['Accuracy', 'QWK', 'MAE']
+
+    # 准备数据：每个loss的每个指标的所有fold值
+    plot_data = []
+    for loss_name in loss_names:
+        for metric_idx, metric in enumerate(metrics):
+            values = []
+            for repeat_key in all_results:
+                fold_data = all_results[repeat_key]
+                for f in fold_data:
+                    values.append(fold_data[f][loss_name][metric])
+            plot_data.append(values)
+
+    # 创建图
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+
+    for ax, metric, label in zip(axes, metrics, metric_labels):
+        # 准备该指标的数据
+        data_for_metric = []
+        labels_for_metric = []
+        for loss_idx, loss_name in enumerate(loss_names):
+            data_idx = loss_idx * len(metrics) + metrics.index(metric)
+            data_for_metric.append(plot_data[data_idx])
+            labels_for_metric.append(loss_name.upper())
+
+        # 绘制箱线图
+        bp = ax.boxplot(data_for_metric, labels=labels_for_metric,
+                        patch_artist=True, widths=0.6,
+                        boxprops=dict(facecolor='lightblue', alpha=0.7),
+                        medianprops=dict(color='red', linewidth=2),
+                        whiskerprops=dict(linewidth=1.5),
+                        capprops=dict(linewidth=1.5))
+
+        # 添加均值点
+        for i, data in enumerate(data_for_metric):
+            mean_val = np.mean(data)
+            ax.plot(i + 1, mean_val, 'go', markersize=8, label='Mean' if i == 0 else "")
+
+        ax.set_ylabel(label, fontsize=12, fontweight='bold')
+        ax.set_xlabel('Loss Function', fontsize=12, fontweight='bold')
+        ax.grid(True, axis='y', linestyle='--', alpha=0.4)
+        ax.set_ylim(0, 1.05 if metric != 'mae' else None)
+
+        # 添加样本量标注
+        for i, data in enumerate(data_for_metric):
+            ax.text(i + 1, ax.get_ylim()[1] - 0.05, f"n={len(data)}",
+                   ha='center', fontsize=8, color='gray')
+
+    plt.suptitle('Repeated K-Fold Cross-Validation: Distribution Analysis (Box Plot)',
+                fontsize=14, fontweight='bold')
+    plt.tight_layout()
+
+    save_path = os.path.join(save_dir, 'repeated_kfold_boxplot.png')
+    plt.savefig(save_path, dpi=200, bbox_inches='tight')
+    plt.close()
+
+    print(f"箱线图已保存: {save_path}")
 
 
 def save_results(all_results, summary, save_dir):
@@ -578,6 +650,9 @@ def main():
 
     # 绘制对比图
     plot_comparison(summary, save_dir)
+
+    # 绘制箱线图
+    plot_boxplot(all_results, summary, save_dir)
 
     # 保存结果
     save_results(all_results, summary, save_dir)
