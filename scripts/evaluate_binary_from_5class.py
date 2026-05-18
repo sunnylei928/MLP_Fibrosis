@@ -340,6 +340,7 @@ class BinaryTaskEvaluator:
 
         all_results = {
             'coral': {'task1': [], 'task2': [], 'task3': [], 'task4': []},
+            'mlp_coral': {'task1': [], 'task2': [], 'task3': [], 'task4': []},
             'ce': {'task1': [], 'task2': [], 'task3': [], 'task4': []},
             'cdw_ce': {'task1': [], 'task2': [], 'task3': [], 'task4': []},
             'cdw_ce_margin': {'task1': [], 'task2': [], 'task3': [], 'task4': []},
@@ -528,7 +529,7 @@ class BinaryTaskEvaluator:
         """绘制对比图"""
         os.makedirs(save_dir, exist_ok=True)
 
-        losses = ['coral', 'ce', 'cdw_ce', 'cdw_ce_margin', 'mse']
+        losses = ['coral', 'mlp_coral', 'ce', 'cdw_ce', 'cdw_ce_margin', 'mse']
         task_names = [f"Task {i}\n{self.TASKS[i]['name']}" for i in range(1, 5)]
 
         metrics_to_plot = ['auc', 'sensitivity', 'specificity', 'f1']
@@ -584,7 +585,7 @@ class BinaryTaskEvaluator:
         """绘制热图对比（Bug修复：使用self.COLORS）"""
         fig, axes = plt.subplots(1, 4, figsize=(16, 4))
 
-        losses = ['coral', 'ce', 'cdw_ce', 'cdw_ce_margin', 'mse']
+        losses = ['coral', 'mlp_coral', 'ce', 'cdw_ce', 'cdw_ce_margin', 'mse']
 
         for task_idx in range(4):
             task_key = f'task{task_idx+1}'
@@ -685,7 +686,9 @@ def main():
     config = Config()
 
     weight_dir = r"/home/ubuntu/lq/MLP_results/5fold_3/weights"
-    output_dir = r"/home/ubuntu/lq/MLP_results"
+
+    # 结果保存在包含权重的大文件夹中
+    output_dir = os.path.dirname(weight_dir)
     os.makedirs(output_dir, exist_ok=True)
 
     evaluator = BinaryTaskEvaluator(weight_dir, config)

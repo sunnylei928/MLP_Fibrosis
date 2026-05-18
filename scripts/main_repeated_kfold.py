@@ -83,6 +83,7 @@ def run_single_repeat(config, loss_configs, X, y, le, repeat_idx, seed, save_dir
 
     Returns:
         fold_results: {fold_idx: {loss_name: metrics}}
+        fold_predictions: {fold_idx: {loss_name: {"y_true": ..., "y_pred": ...}}}
     """
     print(f"\n{'='*80}")
     print(f"  Repeat {repeat_idx + 1} (seed={seed})")
@@ -96,6 +97,7 @@ def run_single_repeat(config, loss_configs, X, y, le, repeat_idx, seed, save_dir
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
     fold_results = {}
+    fold_predictions = {}
 
     # 遍历每一折
     for fold_idx, (train_idx, test_idx) in enumerate(skf.split(X, y)):
@@ -138,6 +140,7 @@ def run_single_repeat(config, loss_configs, X, y, le, repeat_idx, seed, save_dir
         class_weights = class_weights.to(config.DEVICE)
 
         fold_results[fold_idx] = {}
+        fold_predictions[fold_idx] = {}
 
         # 遍历每个 loss
         for loss_name, (loss_type, weight) in loss_configs.items():
@@ -173,8 +176,34 @@ def run_single_repeat(config, loss_configs, X, y, le, repeat_idx, seed, save_dir
                 loss_name=f"{loss_name}_r{repeat_idx}_f{fold_idx}", save_dir=save_dir
             )
 
-            # 测试
+            # 测试并获取预测结果
             test_metrics = evaluate_epoch(model, test_loader, criterion, config.DEVICE)
+
+            # 获取预测结果
+            model.eval()
+            all_preds = []
+            all_labels = []
+            with torch.no_grad():
+                for batch_x, batch_y in test_loader:
+                    batch_x = batch_x.to(config.DEVICE)
+                    outputs = model(batch_x)
+                    if loss_type in ['coral', 'mlp_coral']:
+                        # CORAL: 使用 predict 方法
+                        if hasattr(criterion, 'predict'):
+                            preds = criterion.predict(outputs)
+                        else:
+                            # 回退: 扩展到5类
+                            prob_k = torch.sigmoid(outputs)
+                            batch_probs = torch.zeros(batch_x.size(0), num_classes, device=config.DEVICE)
+                            batch_probs[:, 0] = 1 - prob_k[:, 0]
+                            for i in range(1, prob_k.size(1)):
+                                batch_probs[:, i] = prob_k[:, i-1] - prob_k[:, i]
+                            batch_probs[:, -1] = prob_k[:, -1]
+                            preds = torch.argmax(batch_probs, dim=1)
+                    else:
+                        preds = torch.argmax(outputs, dim=1)
+                    all_preds.extend(preds.cpu().numpy())
+                    all_labels.extend(batch_y.cpu().numpy())
 
             print(f"  Acc: {test_metrics['accuracy']:.4f}, QWK: {test_metrics['qwk']:.4f}, MAE: {test_metrics['mae']:.4f}")
 
@@ -188,7 +217,13 @@ def run_single_repeat(config, loss_configs, X, y, le, repeat_idx, seed, save_dir
                 'mae': test_metrics['mae']
             }
 
-    return fold_results
+            # 保存预测结果
+            fold_predictions[fold_idx][loss_name] = {
+                'y_true': np.array(all_labels),
+                'y_pred': np.array(all_preds)
+            }
+
+    return fold_results, fold_predictions
 
 
 def run_repeated_kfold_cv(config, loss_configs, n_repeats=3, seeds=None):
@@ -203,6 +238,7 @@ def run_repeated_kfold_cv(config, loss_configs, n_repeats=3, seeds=None):
 
     Returns:
         all_results: {repeat_idx: {fold_idx: {loss_name: metrics}}}
+        all_predictions: {repeat_idx: {fold_idx: {loss_name: {"y_true": ..., "y_pred": ...}}}}
         summary: 汇总统计
     """
     if seeds is None:
@@ -215,6 +251,7 @@ def run_repeated_kfold_cv(config, loss_configs, n_repeats=3, seeds=None):
     print(f"标签映射: {le.classes_}")
 
     all_results = {}
+    all_predictions = {}
     repeat_summaries = []
 
     # 创建保存目录
@@ -226,11 +263,12 @@ def run_repeated_kfold_cv(config, loss_configs, n_repeats=3, seeds=None):
     for repeat_idx in range(n_repeats):
         seed = seeds[repeat_idx]
 
-        fold_results = run_single_repeat(
+        fold_results, fold_predictions = run_single_repeat(
             config, loss_configs, X, y, le, repeat_idx, seed, weights_dir
         )
 
         all_results[f"repeat_{repeat_idx}"] = fold_results
+        all_predictions[f"repeat_{repeat_idx}"] = fold_predictions
 
         # 计算本次运行的汇总
         repeat_summary = compute_repeat_summary(fold_results)
@@ -243,7 +281,7 @@ def run_repeated_kfold_cv(config, loss_configs, n_repeats=3, seeds=None):
     # 计算多层次汇总
     summary = compute_hierarchical_summary(all_results, n_repeats, le)
 
-    return all_results, summary, version_dir
+    return all_results, all_predictions, summary, version_dir
 
 
 def compute_repeat_summary(fold_results):
@@ -513,6 +551,127 @@ def plot_boxplot(all_results, summary, save_dir):
     print(f"箱线图已保存: {save_path}")
 
 
+def plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, class_names=None):
+    """
+    绘制混淆矩阵对比图（聚合所有fold的结果）
+
+    Args:
+        all_predictions: {repeat_idx: {fold_idx: {loss_name: {"y_true": ..., "y_pred": ...}}}}
+        summary: 汇总统计
+        save_dir: 保存目录
+        n_classes: 类别数量
+        class_names: 类别名称
+    """
+    from sklearn.metrics import confusion_matrix
+
+    if class_names is None:
+        class_names = [f'F{i}' for i in range(n_classes)]
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # 选择要绘制的loss（只绘制有代表性的）
+    loss_to_plot = ['coral', 'ce', 'cdw_ce', 'mse']
+    loss_names = [ln for ln in loss_to_plot if ln in summary["overall"]]
+
+    # 计算聚合混淆矩阵
+    aggregated_cms = {}
+
+    for loss_name in loss_names:
+        all_y_true = []
+        all_y_pred = []
+
+        # 聚合所有repeat和fold的预测结果
+        for repeat_key in all_predictions:
+            fold_data = all_predictions[repeat_key]
+            for fold_idx in fold_data:
+                if loss_name in fold_data[fold_idx]:
+                    all_y_true.extend(fold_data[fold_idx][loss_name]['y_true'])
+                    all_y_pred.extend(fold_data[fold_idx][loss_name]['y_pred'])
+
+        # 计算混淆矩阵
+        cm = confusion_matrix(all_y_true, all_y_pred, labels=range(n_classes))
+        aggregated_cms[loss_name] = cm
+
+    # 绘制：2x2布局
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    axes = axes.flatten()
+
+    for idx, loss_name in enumerate(loss_names):
+        ax = axes[idx]
+        cm = aggregated_cms[loss_name]
+
+        # 归一化（按行归一化，显示百分比）
+        cm_norm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-8) * 100
+
+        # 绘制热图
+        im = ax.imshow(cm, interpolation='nearest', cmap='Blues', vmin=0, vmax=cm.max())
+
+        # 添加数值标注
+        for i in range(n_classes):
+            for j in range(n_classes):
+                # 同时显示绝对数量和百分比
+                text_color = 'white' if cm_norm[i, j] > 50 else 'black'
+                text = f'{cm[i, j]}\n({cm_norm[i, j]:.1f}%)'
+                ax.text(j, i, text, ha='center', va='center', color=text_color, fontsize=9)
+
+        ax.set_xlabel('Predicted Label', fontsize=11, fontweight='bold')
+        ax.set_ylabel('True Label', fontsize=11, fontweight='bold')
+        ax.set_title(f'{loss_name.upper()}', fontsize=12, fontweight='bold')
+        ax.set_xticks(range(n_classes))
+        ax.set_yticks(range(n_classes))
+        ax.set_xticklabels(class_names)
+        ax.set_yticklabels(class_names)
+
+        # 添加颜色条
+        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label('Count', rotation=270, labelpad=15)
+
+    plt.suptitle('Confusion Matrices (Aggregated over 3 repeats × 5 folds)',
+                fontsize=14, fontweight='bold', y=0.995)
+    plt.tight_layout()
+
+    save_path = os.path.join(save_dir, 'confusion_matrices.png')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"混淆矩阵已保存: {save_path}")
+
+    # 单独绘制最佳模型（CORAL）的混淆矩阵，用于论文主图
+    if 'coral' in aggregated_cms:
+        fig, ax = plt.subplots(figsize=(8, 7))
+
+        cm = aggregated_cms['coral']
+        cm_norm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-8) * 100
+
+        im = ax.imshow(cm, interpolation='nearest', cmap='Blues', vmin=0, vmax=cm.max())
+
+        for i in range(n_classes):
+            for j in range(n_classes):
+                text_color = 'white' if cm_norm[i, j] > 50 else 'black'
+                text = f'{cm[i, j]}\n({cm_norm[i, j]:.1f}%)'
+                ax.text(j, i, text, ha='center', va='center', color=text_color, fontsize=11)
+
+        ax.set_xlabel('Predicted Label', fontsize=13, fontweight='bold')
+        ax.set_ylabel('True Label', fontsize=13, fontweight='bold')
+        ax.set_title('CORAL: Confusion Matrix (Aggregated over 15 evaluations)',
+                    fontsize=14, fontweight='bold')
+        ax.set_xticks(range(n_classes))
+        ax.set_yticks(range(n_classes))
+        ax.set_xticklabels(class_names, fontsize=11)
+        ax.set_yticklabels(class_names, fontsize=11)
+
+        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label('Count', rotation=270, labelpad=20, fontsize=11)
+
+        plt.tight_layout()
+
+        save_path = os.path.join(save_dir, 'confusion_matrix_coral.png')
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        print(f"CORAL混淆矩阵已保存: {save_path}")
+
+
 def save_results(all_results, summary, save_dir):
     """保存所有结果"""
     # 保存汇总统计
@@ -640,7 +799,7 @@ def main():
     print(f"随机种子: {seeds}")
 
     # 运行多次五折交叉验证
-    all_results, summary, save_dir = run_repeated_kfold_cv(
+    all_results, all_predictions, summary, save_dir = run_repeated_kfold_cv(
         config, loss_configs, n_repeats=n_repeats, seeds=seeds
     )
 
@@ -653,6 +812,9 @@ def main():
 
     # 绘制箱线图
     plot_boxplot(all_results, summary, save_dir)
+
+    # 绘制混淆矩阵
+    plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, class_names=['F0', 'F1', 'F2', 'F3', 'F4'])
 
     # 保存结果
     save_results(all_results, summary, save_dir)

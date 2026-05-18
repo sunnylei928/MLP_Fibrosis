@@ -18,7 +18,7 @@ def main():
     print("  1. 单次训练")
     print("  2. 五折交叉验证")
     print("  3. 多次五折交叉验证 (推荐)")
-    print("  4. 从权重生成图表")
+    print("  4. 用5分类权重评估二分类任务")
     print("  5. 推理")
     print()
 
@@ -34,8 +34,8 @@ def main():
         from scripts import main_repeated_kfold
         main_repeated_kfold.main()
     elif choice == "4":
-        from scripts import plot_from_weights
-        plot_from_weights.main()
+        from scripts import evaluate_binary_from_5class
+        evaluate_binary_from_5class.main()
     elif choice == "5":
         weight_path = input("权重文件路径: ").strip()
         data_path = input("数据路径 (回车使用默认): ").strip()
