@@ -515,15 +515,18 @@ def plot_boxplot(all_results, summary, save_dir):
         for loss_idx, loss_name in enumerate(loss_names):
             data_idx = loss_idx * len(metrics) + metrics.index(metric)
             data_for_metric.append(plot_data[data_idx])
-            labels_for_metric.append(loss_name.upper())
+            labels_for_metric.append(loss_name)
 
         # 绘制箱线图
-        bp = ax.boxplot(data_for_metric, labels=labels_for_metric,
+        bp = ax.boxplot(data_for_metric, tick_labels=labels_for_metric,
                         patch_artist=True, widths=0.6,
                         boxprops=dict(facecolor='lightblue', alpha=0.7),
                         medianprops=dict(color='red', linewidth=2),
                         whiskerprops=dict(linewidth=1.5),
                         capprops=dict(linewidth=1.5))
+
+        # 设置x轴刻度标签旋转（与comparison图一致）
+        ax.set_xticklabels(labels_for_metric, rotation=15, ha='right')
 
         # 添加均值点
         for i, data in enumerate(data_for_metric):
@@ -569,9 +572,9 @@ def plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, cla
 
     os.makedirs(save_dir, exist_ok=True)
 
-    # 选择要绘制的loss（只绘制有代表性的）
-    loss_to_plot = ['coral', 'ce', 'cdw_ce', 'mse']
-    loss_names = [ln for ln in loss_to_plot if ln in summary["overall"]]
+    # 绘制所有loss函数
+    loss_names = list(summary["overall"].keys())
+    n_losses = len(loss_names)
 
     # 计算聚合混淆矩阵
     aggregated_cms = {}
@@ -592,8 +595,14 @@ def plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, cla
         cm = confusion_matrix(all_y_true, all_y_pred, labels=range(n_classes))
         aggregated_cms[loss_name] = cm
 
-    # 绘制：2x2布局
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    # 动态布局：根据loss数量调整
+    n_cols = min(3, n_losses)
+    n_rows = (n_losses + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 5 * n_rows))
+
+    # 处理单个子图的情况
+    if n_losses == 1:
+        axes = np.array([axes])
     axes = axes.flatten()
 
     for idx, loss_name in enumerate(loss_names):
@@ -625,6 +634,10 @@ def plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, cla
         # 添加颜色条
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cbar.set_label('Count', rotation=270, labelpad=15)
+
+    # 隐藏未使用的子图
+    for idx in range(n_losses, len(axes)):
+        axes[idx].set_visible(False)
 
     plt.suptitle('Confusion Matrices (Aggregated over 3 repeats × 5 folds)',
                 fontsize=14, fontweight='bold', y=0.995)
@@ -672,7 +685,7 @@ def plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, cla
         print(f"CORAL混淆矩阵已保存: {save_path}")
 
 
-def save_results(all_results, summary, save_dir):
+def save_results(all_results, all_predictions, summary, save_dir):
     """保存所有结果"""
     # 保存汇总统计
     summary_path = os.path.join(save_dir, 'repeated_kfold_summary.json')
@@ -705,9 +718,26 @@ def save_results(all_results, summary, save_dir):
     with open(details_path, 'w', encoding='utf-8') as f:
         json.dump(details, f, ensure_ascii=False, indent=2)
 
+    # 保存预测结果（用于绘制混淆矩阵）
+    predictions = {}
+    for repeat_key, fold_data in all_predictions.items():
+        predictions[repeat_key] = {}
+        for fold_idx, loss_data in fold_data.items():
+            predictions[repeat_key][fold_idx] = {}
+            for loss_name, pred_data in loss_data.items():
+                predictions[repeat_key][fold_idx][loss_name] = {
+                    'y_true': pred_data['y_true'].tolist(),
+                    'y_pred': pred_data['y_pred'].tolist()
+                }
+
+    predictions_path = os.path.join(save_dir, 'repeated_kfold_predictions.json')
+    with open(predictions_path, 'w', encoding='utf-8') as f:
+        json.dump(predictions, f, ensure_ascii=False, indent=2)
+
     print(f"结果已保存:")
     print(f"  - {summary_path}")
     print(f"  - {details_path}")
+    print(f"  - {predictions_path}")
 
 
 def create_report(summary, save_dir):
@@ -817,7 +847,7 @@ def main():
     plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, class_names=['F0', 'F1', 'F2', 'F3', 'F4'])
 
     # 保存结果
-    save_results(all_results, summary, save_dir)
+    save_results(all_results, all_predictions, summary, save_dir)
 
     # 创建报告
     create_report(summary, save_dir)
