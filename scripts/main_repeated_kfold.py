@@ -833,28 +833,36 @@ def main():
         config, loss_configs, n_repeats=n_repeats, seeds=seeds
     )
 
+    # 创建子目录：json文件和图片分开存放
+    json_dir = os.path.join(save_dir, "json")
+    plots_dir = os.path.join(save_dir, "plots")
+    os.makedirs(json_dir, exist_ok=True)
+    os.makedirs(plots_dir, exist_ok=True)
+
     # 打印最终汇总
     le = load_data_full(config)[2]  # 获取label encoder
     print_final_summary(summary, le)
 
     # 绘制对比图
-    plot_comparison(summary, save_dir)
+    plot_comparison(summary, plots_dir)
 
     # 绘制箱线图
-    plot_boxplot(all_results, summary, save_dir)
+    plot_boxplot(all_results, summary, plots_dir)
 
     # 绘制混淆矩阵
-    plot_confusion_matrices(all_predictions, summary, save_dir, n_classes=5, class_names=['F0', 'F1', 'F2', 'F3', 'F4'])
+    plot_confusion_matrices(all_predictions, summary, plots_dir, n_classes=5, class_names=['F0', 'F1', 'F2', 'F3', 'F4'])
 
-    # 保存结果
-    save_results(all_results, all_predictions, summary, save_dir)
+    # 保存结果（JSON文件）
+    save_results(all_results, all_predictions, summary, json_dir)
 
     # 创建报告
-    create_report(summary, save_dir)
+    create_report(summary, json_dir)
 
     print(f"\n{'='*100}")
     print(f"  实验完成！")
     print(f"  所有结果已保存至: {save_dir}")
+    print(f"    - JSON文件: {json_dir}")
+    print(f"    - 图片: {plots_dir}")
     print(f"{'='*100}")
 
     logger.close()

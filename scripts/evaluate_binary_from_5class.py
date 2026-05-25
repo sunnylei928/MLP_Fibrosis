@@ -687,8 +687,8 @@ def main():
 
     weight_dir = r"/home/ubuntu/lq/MLP_results/5fold_3/weights"
 
-    # 结果保存在包含权重的大文件夹中
-    output_dir = os.path.dirname(weight_dir)
+    # 结果保存在单独的 binary_results 文件夹中
+    output_dir = os.path.join(os.path.dirname(weight_dir), "binary_results")
     os.makedirs(output_dir, exist_ok=True)
 
     evaluator = BinaryTaskEvaluator(weight_dir, config)
